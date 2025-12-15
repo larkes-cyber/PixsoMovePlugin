@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixso Data Exporter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 600px;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #1a202c;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #718096;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    #send {
+      width: 100%;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    #send:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+
+    #send:active {
+      transform: translateY(0);
+    }
+
+    #send:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-container {
+      margin-top: 24px;
+      padding: 16px;
+      background: #f7fafc;
+      border-radius: 8px;
+      border-left: 4px solid #cbd5e0;
+      min-height: 60px;
+    }
+
+    .status-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    #status {
+      font-size: 14px;
+      color: #4a5568;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    .status-container.loading {
+      border-left-color: #4299e1;
+      background: #ebf8ff;
+    }
+
+    .status-container.loading #status {
+      color: #2b6cb0;
+    }
+
+    .status-container.success {
+      border-left-color: #48bb78;
+      background: #f0fff4;
+    }
+
+    .status-container.success #status {
+      color: #22543d;
+    }
+
+    .status-container.error {
+      border-left-color: #f56565;
+      background: #fff5f5;
+    }
+
+    .status-container.error #status {
+      color: #742a2a;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .loading .status-label::after {
+      content: '...';
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      margin-top: 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-container input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-right: 10px;
+      cursor: pointer;
+      accent-color: #667eea;
+    }
+
+    .toggle-label {
+      font-size: 14px;
+      color: #4a5568;
+      font-weight: 500;
+    }
+
+    .json-container {
+      margin-top: 16px;
+      padding: 16px;
+      background: #1a202c;
+      border-radius: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .json-container .status-label {
+      color: #a0aec0;
+      margin-bottom: 8px;
+    }
+
+    #jsonOutput {
+      font-size: 12px;
+      color: #e2e8f0;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: 'Monaco', 'Courier New', monospace;
+      margin: 0;
+    }
+
+    .json-container::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .json-container::-webkit-scrollbar-track {
+      background: #2d3748;
+      border-radius: 4px;
+    }
+
+    .json-container::-webkit-scrollbar-thumb {
+      background: #4a5568;
+      border-radius: 4px;
+    }
+
+    .json-container::-webkit-scrollbar-thumb:hover {
+      background: #718096;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Pixso Data Exporter</h1>
+    <p class="subtitle">Экспорт структуры страницы на сервер</p>
+
+    <button id="send">Отправить данные</button>
+
+    <div class="status-container" id="statusContainer">
+      <div class="status-label">Статус</div>
+      <div id="status">Готов к отправке</div>
+    </div>
+
+    <label class="toggle-container">
+      <input type="checkbox" id="showJson">
+      <span class="toggle-label">Показать JSON</span>
+    </label>
+
+    <div class="json-container" id="jsonContainer" style="display: none;">
+      <div class="status-label">JSON данные</div>
+      <pre id="jsonOutput"></pre>
+    </div>
+  </div>
+
+  <script>
+    const statusDiv = document.getElementById('status');
+    const statusContainer = document.getElementById('statusContainer');
+    const sendBtn = document.getElementById('send');
+    const showJsonCheckbox = document.getElementById('showJson');
+    const jsonContainer = document.getElementById('jsonContainer');
+    const jsonOutput = document.getElementById('jsonOutput');
+
+    function setStatus(text, type = 'default') {
+      statusDiv.textContent = text;
+      statusContainer.className = 'status-container ' + type;
+    }
+
+    // Toggle JSON container visibility and load data
+    showJsonCheckbox.addEventListener('change', function() {
+      if (this.checked) {
+        jsonContainer.style.display = 'block';
+        jsonOutput.textContent = 'Загрузка данных...';
+        parent.postMessage({ pluginMessage: { type: 'preview-data' } }, '*');
+      } else {
+        jsonContainer.style.display = 'none';
+      }
+    });
+
+    sendBtn.onclick = async function() {
+      sendBtn.disabled = true;
+      setStatus('Запрашиваю данные у плагина', 'loading');
+
+      try {
+        parent.postMessage({ pluginMessage: { type: 'collect-data' } }, '*');
+      } catch (err) {
+        setStatus('❌ Ошибка: ' + err.message, 'error');
+        sendBtn.disabled = false;
+      }
+    };
+
+    window.onmessage = async (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === 'preview-data') {
+        // Just display the JSON preview without sending
+        const payload = msg.payload;
+        jsonOutput.textContent = JSON.stringify(payload, null, 2);
+      } else if (msg.type === 'collected-data') {
+        const payload = msg.payload;
+        setStatus('Отправляю данные на сервер', 'loading');
+
+        // Update JSON if checkbox is checked
+        if (showJsonCheckbox.checked) {
+          jsonOutput.textContent = JSON.stringify(payload, null, 2);
+        }
+
+        try {
+          const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!res.ok) throw new Error('Сервер вернул статус ' + res.status);
+
+          const responseData = await res.text();
+          setStatus('✓ Данные успешно отправлены!\n\nОтвет сервера: ' + responseData, 'success');
+        } catch (err) {
+          setStatus('❌ Ошибка отправки: ' + err.message, 'error');
+        }
+
+        sendBtn.disabled = false;
+      } else if (msg.type === 'error') {
+        setStatus('❌ Ошибка сбора данных: ' + msg.message, 'error');
+        sendBtn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

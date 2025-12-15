@@ -1,0 +1,8 @@
+{
+  "name": "Demo Plugin",
+  "id": "demo-plugin",
+  "main": "index.js",
+  "version": "1.0.0",
+  "api": "1.0.0",
+  "editorType": ["pixso", "dev"]
+}
