@@ -222,12 +222,12 @@ pixso.showUI(`
 
     <label class="toggle-container">
       <input type="checkbox" id="showJson">
-      <span class="toggle-label">Показать JSON</span>
+      <span class="toggle-label">Показать скриншот</span>
     </label>
 
     <div class="json-container" id="jsonContainer" style="display: none;">
-      <div class="status-label">JSON данные</div>
-      <pre id="jsonOutput"></pre>
+      <div class="status-label">Скриншот первого фрейма</div>
+      <img id="frameImage" style="width: 100%; border-radius: 4px;" />
     </div>
   </div>
 
@@ -237,18 +237,18 @@ pixso.showUI(`
     const sendBtn = document.getElementById('send');
     const showJsonCheckbox = document.getElementById('showJson');
     const jsonContainer = document.getElementById('jsonContainer');
-    const jsonOutput = document.getElementById('jsonOutput');
+    const frameImage = document.getElementById('frameImage');
 
     function setStatus(text, type = 'default') {
       statusDiv.textContent = text;
       statusContainer.className = 'status-container ' + type;
     }
 
-    // Toggle JSON container visibility and load data
+    // Toggle image container visibility and load screenshot
     showJsonCheckbox.addEventListener('change', function() {
       if (this.checked) {
         jsonContainer.style.display = 'block';
-        jsonOutput.textContent = 'Загрузка данных...';
+        frameImage.alt = 'Загрузка скриншота...';
         parent.postMessage({ pluginMessage: { type: 'preview-data' } }, '*');
       } else {
         jsonContainer.style.display = 'none';
@@ -272,17 +272,25 @@ pixso.showUI(`
       if (!msg) return;
 
       if (msg.type === 'preview-data') {
-        // Just display the JSON preview without sending
-        const payload = msg.payload;
-        jsonOutput.textContent = JSON.stringify(payload, null, 2);
+        // Display the frame screenshot
+        if (msg.imageBytes) {
+          // Convert array to Uint8Array and then to base64
+          const uint8Array = new Uint8Array(msg.imageBytes);
+          let binary = '';
+          const chunkSize = 0x8000; // Process in 32KB chunks to avoid stack overflow
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+          const base64 = btoa(binary);
+          frameImage.src = 'data:image/png;base64,' + base64;
+          frameImage.alt = 'Скриншот фрейма';
+        } else if (msg.error) {
+          frameImage.alt = 'Ошибка: ' + msg.error;
+        }
       } else if (msg.type === 'collected-data') {
         const payload = msg.payload;
         setStatus('Отправляю данные на сервер', 'loading');
-
-        // Update JSON if checkbox is checked
-        if (showJsonCheckbox.checked) {
-          jsonOutput.textContent = JSON.stringify(payload, null, 2);
-        }
 
         try {
           const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
@@ -317,25 +325,47 @@ pixso.ui.onmessage = async (msg) => {
   if (msg.type !== 'collect-data' && msg.type !== 'preview-data') return;
 
   try {
-    const projectName = pixso.root?.name ?? null;
-    const page = pixso.currentPage;
-
-    const nodes = (page?.children ?? []).map(n => serializeNode(n));
-    const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
-
-    const payload = {
-      projectName,
-      pageName: page?.name ?? null,
-      pageId: page?.id ?? null,
-      timestamp: new Date().toISOString(),
-      nodes: nodes.filter(Boolean),
-      visualGraph: visualGraph.filter(Boolean)
-    };
-
-    // Send appropriate response based on request type
     if (msg.type === 'preview-data') {
-      pixso.ui.postMessage({ type: 'preview-data', payload });
+      // Export first frame as image
+      const page = pixso.currentPage;
+      const firstFrame = page?.children?.find(node => node.type === 'FRAME');
+
+      if (!firstFrame) {
+        pixso.ui.postMessage({
+          type: 'preview-data',
+          error: 'Фрейм не найден на странице'
+        });
+        return;
+      }
+
+      // Export frame as PNG
+      const imageBytes = await firstFrame.exportAsync({
+        format: 'PNG',
+        constraint: { type: 'SCALE', value: 1 }
+      });
+
+      // Send raw bytes to UI for conversion
+      pixso.ui.postMessage({
+        type: 'preview-data',
+        imageBytes: Array.from(imageBytes)
+      });
     } else {
+      // Collect data for sending to server
+      const projectName = pixso.root?.name ?? null;
+      const page = pixso.currentPage;
+
+      const nodes = (page?.children ?? []).map(n => serializeNode(n));
+      const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
+
+      const payload = {
+        projectName,
+        pageName: page?.name ?? null,
+        pageId: page?.id ?? null,
+        timestamp: new Date().toISOString(),
+        nodes: nodes.filter(Boolean),
+        visualGraph: visualGraph.filter(Boolean)
+      };
+
       pixso.ui.postMessage({ type: 'collected-data', payload });
     }
   } catch (err) {

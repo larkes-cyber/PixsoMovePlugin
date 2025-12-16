@@ -1,5 +1,5 @@
 {
-  "name": "Demo Plugin",
+  "name": "PixsoMove Plugin",
   "id": "demo-plugin",
   "main": "index.js",
   "version": "1.0.0",
