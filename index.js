@@ -170,13 +170,45 @@ pixso.showUI(`
       padding: 16px;
       background: #1a202c;
       border-radius: 8px;
-      max-height: 300px;
+      max-height: 400px;
       overflow-y: auto;
+      position: relative;
     }
 
-    .json-container .status-label {
+    .json-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .json-header .status-label {
       color: #a0aec0;
-      margin-bottom: 8px;
+      margin-bottom: 0;
+    }
+
+    .copy-btn {
+      padding: 6px 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      background: #5568d3;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.95);
+    }
+
+    .copy-btn.copied {
+      background: #48bb78;
     }
 
     #jsonOutput {
@@ -207,59 +239,6 @@ pixso.showUI(`
       background: #718096;
     }
 
-    .json-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .copy-btn {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      background: #2d3748;
-      color: #e2e8f0;
-      border: 1px solid #4a5568;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    }
-
-    .copy-btn:hover {
-      background: #4a5568;
-      border-color: #718096;
-    }
-
-    .copy-btn:active {
-      transform: scale(0.98);
-    }
-
-    .copy-btn svg {
-      flex-shrink: 0;
-    }
-
-    .copy-btn .copied-text {
-      display: none;
-    }
-
-    .copy-btn.copied {
-      background: #48bb78;
-      border-color: #48bb78;
-      color: white;
-    }
-
-    .copy-btn.copied .copy-text {
-      display: none;
-    }
-
-    .copy-btn.copied .copied-text {
-      display: inline;
-    }
   </style>
 </head>
 <body>
@@ -276,20 +255,13 @@ pixso.showUI(`
 
     <label class="toggle-container">
       <input type="checkbox" id="showJson">
-      <span class="toggle-label">Показать JSON</span>
+      <span class="toggle-label">Show json</span>
     </label>
 
     <div class="json-container" id="jsonContainer" style="display: none;">
       <div class="json-header">
-        <div class="status-label">JSON данные</div>
-        <button id="copyBtn" class="copy-btn" title="Скопировать JSON">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M13.5 5.5H6.5C5.94772 5.5 5.5 5.94772 5.5 6.5V13.5C5.5 14.0523 5.94772 14.5 6.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V6.5C14.5 5.94772 14.0523 5.5 13.5 5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M3.5 10.5H2.5C2.23478 10.5 1.98043 10.3946 1.79289 10.2071C1.60536 10.0196 1.5 9.76522 1.5 9.5V2.5C1.5 2.23478 1.60536 1.98043 1.79289 1.79289C1.98043 1.60536 2.23478 1.5 2.5 1.5H9.5C9.76522 1.5 10.0196 1.60536 10.2071 1.79289C10.3946 1.98043 10.5 2.23478 10.5 2.5V3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span class="copy-text">Копировать</span>
-          <span class="copied-text">Скопировано!</span>
-        </button>
+        <div class="status-label">JSON Data</div>
+        <button class="copy-btn" id="copyBtn">Copy</button>
       </div>
       <pre id="jsonOutput"></pre>
     </div>
@@ -304,64 +276,71 @@ pixso.showUI(`
     const jsonOutput = document.getElementById('jsonOutput');
     const copyBtn = document.getElementById('copyBtn');
 
+    let currentJsonData = null;
+
     function setStatus(text, type = 'default') {
       statusDiv.textContent = text;
       statusContainer.className = 'status-container ' + type;
     }
 
-    // Copy JSON to clipboard
-    copyBtn.addEventListener('click', async function() {
-      const jsonText = jsonOutput.textContent;
-
-      if (!jsonText || jsonText === 'Загрузка данных...') {
-        return;
-      }
-
-      try {
-        // Try modern Clipboard API first
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(jsonText);
-        } else {
-          // Fallback to older method
-          const textarea = document.createElement('textarea');
-          textarea.value = jsonText;
-          textarea.style.position = 'fixed';
-          textarea.style.left = '-9999px';
-          textarea.style.top = '-9999px';
-          document.body.appendChild(textarea);
-          textarea.focus();
-          textarea.select();
-
-          try {
-            document.execCommand('copy');
-          } finally {
-            document.body.removeChild(textarea);
-          }
-        }
-
-        // Show success feedback
-        copyBtn.classList.add('copied');
-
-        // Reset after 2 seconds
-        setTimeout(() => {
-          copyBtn.classList.remove('copied');
-        }, 2000);
-      } catch (err) {
-        console.error('Failed to copy:', err);
-        alert('Не удалось скопировать в буфер обмена');
-      }
-    });
-
-    // Toggle JSON container visibility and load data
+    // Toggle JSON viewer visibility
     showJsonCheckbox.addEventListener('change', function() {
       if (this.checked) {
         jsonContainer.style.display = 'block';
-        jsonOutput.textContent = 'Загрузка данных...';
-        parent.postMessage({ pluginMessage: { type: 'preview-data' } }, '*');
+        if (currentJsonData) {
+          jsonOutput.textContent = JSON.stringify(currentJsonData, null, 2);
+        }
       } else {
         jsonContainer.style.display = 'none';
       }
     });
+
+    // Copy JSON to clipboard
+    copyBtn.addEventListener('click', function() {
+      if (!currentJsonData) return;
+
+      try {
+        const jsonString = JSON.stringify(currentJsonData, null, 2);
+
+        // Create a temporary textarea element
+        const textarea = document.createElement('textarea');
+        textarea.value = jsonString;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+
+        // Select and copy the text
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        const successful = document.execCommand('copy');
+
+        // Remove the textarea
+        document.body.removeChild(textarea);
+
+        if (successful) {
+          copyBtn.textContent = 'Copied!';
+          copyBtn.classList.add('copied');
+
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy';
+            copyBtn.classList.remove('copied');
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        copyBtn.textContent = 'Failed';
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+        }, 2000);
+      }
+    });
+
+    // Preload data when plugin opens
+    function preloadData() {
+      setStatus('Загружаю данные...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'preload-data' } }, '*');
+    }
 
     sendBtn.onclick = async function() {
       sendBtn.disabled = true;
@@ -375,24 +354,94 @@ pixso.showUI(`
       }
     };
 
+    // Initialize plugin by preloading data
+    preloadData();
+    function bytesToBase64(bytes) {
+      // bytes: Uint8Array
+      let binary = '';
+      const chunkSize = 0x8000; // предотвращаем переполнение стека
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode(...chunk);
+      }
+      return btoa(binary);
+    }
+
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
-      if (msg.type === 'preview-data') {
-        // Just display the JSON preview without sending
+      if (msg.type === 'preload-data') {
         const payload = msg.payload;
-        jsonOutput.textContent = JSON.stringify(payload, null, 2);
-      } else if (msg.type === 'collected-data') {
-        const payload = msg.payload;
-        setStatus('Отправляю данные на сервер', 'loading');
 
-        // Update JSON if checkbox is checked
+        // Store payload for JSON viewer
+        currentJsonData = payload;
+
+        // Update JSON viewer if it's visible
         if (showJsonCheckbox.checked) {
           jsonOutput.textContent = JSON.stringify(payload, null, 2);
         }
 
+        setStatus('Готов к отправке', 'default');
+      } else if (msg.type === 'collected-data') {
+        const payload = msg.payload;
+
+        // Store payload for JSON viewer
+        currentJsonData = payload;
+
+        // Update JSON viewer if it's visible
+        if (showJsonCheckbox.checked) {
+          jsonOutput.textContent = JSON.stringify(payload, null, 2);
+        }
+
+        setStatus('Отправляю данные на сервер', 'loading');
+        
+        function uint8ToBase64(u8Arr) {
+        const chunkSize = 0x8000; // 32KB
+        let result = '';
+        for (let i = 0; i < u8Arr.length; i += chunkSize) {
+          const chunk = u8Arr.subarray(i, i + chunkSize);
+          result += String.fromCharCode.apply(null, chunk);
+        }
+        return btoa(result);
+      }
+
+      // Recursive function to convert all previewImage fields to base64
+      function convertNodeImagesToBase64(node) {
+        if (!node) return null;
+
+        const { previewImage, children, ...rest } = node;
+
+        // Convert previewImage to base64 if it exists
+        let convertedPreviewImage = null;
+        if (previewImage && Array.isArray(previewImage)) {
+          const uint8Array = new Uint8Array(previewImage);
+          convertedPreviewImage = uint8ToBase64(uint8Array);
+        }
+
+        // Recursively convert children
+        let convertedChildren = null;
+        if (children && Array.isArray(children)) {
+          convertedChildren = children.map(convertNodeImagesToBase64).filter(Boolean);
+        }
+
+        return {
+          ...rest,
+          previewImage: convertedPreviewImage,
+          children: convertedChildren
+        };
+      }
+
+      // Convert all nodes recursively
+      const updatedNodes = payload.nodes.map(convertNodeImagesToBase64).filter(Boolean);
+
+      // Replace nodes with updated ones
+      payload.nodes = updatedNodes;
+      payload.nodes.forEach(node => {
+        console.log(node.previewImage)
+      })
         try {
+                console.log("###################################")
           const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -422,13 +471,14 @@ pixso.showUI(`
 // Main thread (контроллер плагина)
 // ---------------------------------------
 pixso.ui.onmessage = async (msg) => {
-  if (msg.type !== 'collect-data' && msg.type !== 'preview-data') return;
+  if (msg.type !== 'collect-data' && msg.type !== 'preload-data') return;
 
   try {
+    // Collect data for sending to server
     const projectName = pixso.root?.name ?? null;
     const page = pixso.currentPage;
 
-    const nodes = (page?.children ?? []).map(n => serializeNode(n));
+    const nodes = await Promise.all((page?.children ?? []).map(serializeNodeWithImage));
     const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
 
     const payload = {
@@ -439,13 +489,7 @@ pixso.ui.onmessage = async (msg) => {
       nodes: nodes.filter(Boolean),
       visualGraph: visualGraph.filter(Boolean)
     };
-
-    // Send appropriate response based on request type
-    if (msg.type === 'preview-data') {
-      pixso.ui.postMessage({ type: 'preview-data', payload });
-    } else {
-      pixso.ui.postMessage({ type: 'collected-data', payload });
-    }
+    pixso.ui.postMessage({ type: msg.type === 'preload-data' ? 'preload-data' : 'collected-data', payload });
   } catch (err) {
     pixso.ui.postMessage({ type: 'error', message: err.message });
   }
@@ -458,9 +502,64 @@ const safeNumber = v => (typeof v === 'number' ? v : null);
 const safeArray = (a, fn) => Array.isArray(a) ? a.map(fn).filter(Boolean) : [];
 const safeString = v => (typeof v === 'string' ? v : null);
 
+function uint8ToBase64(uint8) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < uint8.length; i += chunkSize) {
+    binary += String.fromCharCode(...uint8.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function exportFrameImage(frame) {
+  const bytes = await frame.exportAsync({
+    format: 'PNG',
+    constraint: { type: 'SCALE', value: 1 }
+  });
+
+  return {
+    mimeType: 'image/png',
+    encoding: 'base64',
+    data: uint8ToBase64(bytes)
+  };
+}
+
+async function serializeNodeWithImage(node) {
+  const base = serializeNode(node);
+  if (!base) return null;
+
+  if (node.type === 'FRAME') {
+    try {
+      let img = await exportFrameBytes(node)
+      base.previewImage = img;
+    } catch (e) {
+      base.previewImage = null;
+    }
+  }
+
+  if (node.children?.length) {
+    base.children = await Promise.all(
+      node.children.map(serializeNodeWithImage)
+    ).then(a => a.filter(Boolean));
+  }
+
+  return base;
+}
+
 /**
  * Сериализация ноды строго под DTO
  */
+
+
+async function exportFrameBytes(frame) {
+  return Array.from(
+    await frame.exportAsync({
+      format: 'PNG',
+      constraint: { type: 'SCALE', value: 1 }
+    })
+  );
+}
+
 function serializeNode(node) {
   if (!node) return null;
 
