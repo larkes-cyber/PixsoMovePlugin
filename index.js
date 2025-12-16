@@ -581,7 +581,11 @@ function serializeNode(node) {
     layoutAlign: safeString(node.layoutAlign),
     layoutGrow: safeNumber(node.layoutGrow),
     itemSpacing: safeNumber(node.itemSpacing),
-    prototypeStartNodeId: safeString(node.prototypeStartNodeId)
+    prototypeStartNodeId: safeString(node.prototypeStartNodeId),
+    // Component metadata
+    description: safeString(node.description),
+    key: safeString(node.key),
+    remote: typeof node.remote === 'boolean' ? node.remote : null
   };
 
   const padding = node.padding ? {
@@ -670,6 +674,67 @@ function serializeNode(node) {
 
   const children = safeArray(node.children, serializeNode);
 
+  // Component properties for COMPONENT and INSTANCE nodes
+  const componentProperties = {};
+  if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+    componentProperties.componentPropertyDefinitions = node.componentPropertyDefinitions ?? null;
+    componentProperties.variantProperties = node.variantProperties ?? null;
+  }
+  if (node.type === 'INSTANCE') {
+    componentProperties.mainComponent = node.mainComponent ? {
+      id: safeString(node.mainComponent.id),
+      name: safeString(node.mainComponent.name),
+      key: safeString(node.mainComponent.key),
+      description: safeString(node.mainComponent.description)
+    } : null;
+    componentProperties.componentProperties = node.componentProperties ?? null;
+    componentProperties.variantProperties = node.variantProperties ?? null;
+  }
+
+  // Plugin data (may contain additional metadata)
+  let pluginData = null;
+  try {
+    const pluginDataKeys = node.getPluginDataKeys ? node.getPluginDataKeys() : [];
+    if (pluginDataKeys.length > 0) {
+      pluginData = {};
+      pluginDataKeys.forEach(key => {
+        try {
+          pluginData[key] = node.getPluginData(key);
+        } catch (e) {
+          // Skip if access is denied
+        }
+      });
+    }
+  } catch (e) {
+    // Plugin data not accessible
+  }
+
+  // Shared plugin data
+  let sharedPluginData = null;
+  try {
+    const sharedPluginDataKeys = node.getSharedPluginDataKeys ? node.getSharedPluginDataKeys('*') : [];
+    if (sharedPluginDataKeys.length > 0) {
+      sharedPluginData = {};
+      sharedPluginDataKeys.forEach(namespace => {
+        try {
+          const keys = node.getSharedPluginDataKeys(namespace);
+          sharedPluginData[namespace] = {};
+          keys.forEach(key => {
+            try {
+              sharedPluginData[namespace][key] = node.getSharedPluginData(namespace, key);
+            } catch (e) {
+              // Skip if access is denied
+            }
+          });
+        } catch (e) {
+          // Skip if access is denied
+        }
+      });
+    }
+  } catch (e) {
+    // Shared plugin data not accessible
+  }
+
   return {
     ...base,
     padding,
@@ -687,7 +752,10 @@ function serializeNode(node) {
     strokeStyleId: safeString(node.strokeStyleId),
     effectStyleId: safeString(node.effectStyleId),
     transformStyle: safeString(node.transformStyle),
-    layoutGrids: node.layoutGrids ?? null
+    layoutGrids: node.layoutGrids ?? null,
+    ...componentProperties,
+    pluginData: pluginData && Object.keys(pluginData).length > 0 ? pluginData : null,
+    sharedPluginData: sharedPluginData && Object.keys(sharedPluginData).length > 0 ? sharedPluginData : null
   };
 }
 
