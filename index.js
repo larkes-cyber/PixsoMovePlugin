@@ -266,6 +266,16 @@ pixso.showUI(`
         sendBtn.disabled = false;
       }
     };
+    function bytesToBase64(bytes) {
+      // bytes: Uint8Array
+      let binary = '';
+      const chunkSize = 0x8000; // предотвращаем переполнение стека
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode(...chunk);
+      }
+      return btoa(binary);
+    }
 
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
@@ -291,6 +301,22 @@ pixso.showUI(`
       } else if (msg.type === 'collected-data') {
         const payload = msg.payload;
         setStatus('Отправляю данные на сервер', 'loading');
+        
+        payload.nodes.forEach(node => {
+            if (node.previewImage) {
+                // Convert array to Uint8Array and then to base64
+                const uint8Array = new Uint8Array(node.previewImage);
+                let binary = '';
+                const chunkSize = 0x8000; // Process in 32KB chunks to avoid stack overflow
+                for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                  const chunk = uint8Array.subarray(i, i + chunkSize);
+                  binary += String.fromCharCode.apply(null, chunk);
+                }
+                const base64 = btoa(binary);
+                node.previewImage = base64;
+                console.log(typeof node.previewImage);          // "object"
+            }
+        });
 
         try {
           const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
@@ -354,7 +380,7 @@ pixso.ui.onmessage = async (msg) => {
       const projectName = pixso.root?.name ?? null;
       const page = pixso.currentPage;
 
-      const nodes = (page?.children ?? []).map(n => serializeNode(n));
+      const nodes = await Promise.all((page?.children ?? []).map(serializeNodeWithImage));
       const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
 
       const payload = {
@@ -365,7 +391,6 @@ pixso.ui.onmessage = async (msg) => {
         nodes: nodes.filter(Boolean),
         visualGraph: visualGraph.filter(Boolean)
       };
-
       pixso.ui.postMessage({ type: 'collected-data', payload });
     }
   } catch (err) {
@@ -380,9 +405,64 @@ const safeNumber = v => (typeof v === 'number' ? v : null);
 const safeArray = (a, fn) => Array.isArray(a) ? a.map(fn).filter(Boolean) : [];
 const safeString = v => (typeof v === 'string' ? v : null);
 
+function uint8ToBase64(uint8) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < uint8.length; i += chunkSize) {
+    binary += String.fromCharCode(...uint8.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function exportFrameImage(frame) {
+  const bytes = await frame.exportAsync({
+    format: 'PNG',
+    constraint: { type: 'SCALE', value: 1 }
+  });
+
+  return {
+    mimeType: 'image/png',
+    encoding: 'base64',
+    data: uint8ToBase64(bytes)
+  };
+}
+
+async function serializeNodeWithImage(node) {
+  const base = serializeNode(node);
+  if (!base) return null;
+
+  if (node.type === 'FRAME') {
+    try {
+      let img = await exportFrameBytes(node)
+      base.previewImage = img;
+    } catch (e) {
+      base.previewImage = null;
+    }
+  }
+
+  if (node.children?.length) {
+    base.children = await Promise.all(
+      node.children.map(serializeNodeWithImage)
+    ).then(a => a.filter(Boolean));
+  }
+
+  return base;
+}
+
 /**
  * Сериализация ноды строго под DTO
  */
+
+
+async function exportFrameBytes(frame) {
+  return Array.from(
+    await frame.exportAsync({
+      format: 'PNG',
+      constraint: { type: 'SCALE', value: 1 }
+    })
+  );
+}
+
 function serializeNode(node) {
   if (!node) return null;
 
