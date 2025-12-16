@@ -206,6 +206,60 @@ pixso.showUI(`
     .json-container::-webkit-scrollbar-thumb:hover {
       background: #718096;
     }
+
+    .json-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .copy-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: #2d3748;
+      color: #e2e8f0;
+      border: 1px solid #4a5568;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    }
+
+    .copy-btn:hover {
+      background: #4a5568;
+      border-color: #718096;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.98);
+    }
+
+    .copy-btn svg {
+      flex-shrink: 0;
+    }
+
+    .copy-btn .copied-text {
+      display: none;
+    }
+
+    .copy-btn.copied {
+      background: #48bb78;
+      border-color: #48bb78;
+      color: white;
+    }
+
+    .copy-btn.copied .copy-text {
+      display: none;
+    }
+
+    .copy-btn.copied .copied-text {
+      display: inline;
+    }
   </style>
 </head>
 <body>
@@ -226,7 +280,17 @@ pixso.showUI(`
     </label>
 
     <div class="json-container" id="jsonContainer" style="display: none;">
-      <div class="status-label">JSON данные</div>
+      <div class="json-header">
+        <div class="status-label">JSON данные</div>
+        <button id="copyBtn" class="copy-btn" title="Скопировать JSON">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M13.5 5.5H6.5C5.94772 5.5 5.5 5.94772 5.5 6.5V13.5C5.5 14.0523 5.94772 14.5 6.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V6.5C14.5 5.94772 14.0523 5.5 13.5 5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3.5 10.5H2.5C2.23478 10.5 1.98043 10.3946 1.79289 10.2071C1.60536 10.0196 1.5 9.76522 1.5 9.5V2.5C1.5 2.23478 1.60536 1.98043 1.79289 1.79289C1.98043 1.60536 2.23478 1.5 2.5 1.5H9.5C9.76522 1.5 10.0196 1.60536 10.2071 1.79289C10.3946 1.98043 10.5 2.23478 10.5 2.5V3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="copy-text">Копировать</span>
+          <span class="copied-text">Скопировано!</span>
+        </button>
+      </div>
       <pre id="jsonOutput"></pre>
     </div>
   </div>
@@ -238,11 +302,55 @@ pixso.showUI(`
     const showJsonCheckbox = document.getElementById('showJson');
     const jsonContainer = document.getElementById('jsonContainer');
     const jsonOutput = document.getElementById('jsonOutput');
+    const copyBtn = document.getElementById('copyBtn');
 
     function setStatus(text, type = 'default') {
       statusDiv.textContent = text;
       statusContainer.className = 'status-container ' + type;
     }
+
+    // Copy JSON to clipboard
+    copyBtn.addEventListener('click', async function() {
+      const jsonText = jsonOutput.textContent;
+
+      if (!jsonText || jsonText === 'Загрузка данных...') {
+        return;
+      }
+
+      try {
+        // Try modern Clipboard API first
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(jsonText);
+        } else {
+          // Fallback to older method
+          const textarea = document.createElement('textarea');
+          textarea.value = jsonText;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          textarea.style.top = '-9999px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+
+          try {
+            document.execCommand('copy');
+          } finally {
+            document.body.removeChild(textarea);
+          }
+        }
+
+        // Show success feedback
+        copyBtn.classList.add('copied');
+
+        // Reset after 2 seconds
+        setTimeout(() => {
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        alert('Не удалось скопировать в буфер обмена');
+      }
+    });
 
     // Toggle JSON container visibility and load data
     showJsonCheckbox.addEventListener('change', function() {
