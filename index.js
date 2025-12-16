@@ -312,18 +312,36 @@ pixso.showUI(`
         return btoa(result);
       }
 
-      // Используем map для преобразования nodes
-      const updatedNodes = payload.nodes.map(node => {
-          const { previewImage, ...rest } = node; // вытаскиваем previewImage и всё остальное
-          if (node.previewImage) {
-            const uint8Array = new Uint8Array(node.previewImage);
-            const base64 = uint8ToBase64(uint8Array);
-            return { ...rest,  previewImage: base64}; // возвращаем только остальные свойства
-          }
-          return { ...rest,  previewImage: null}; // возвращаем только остальные свойства
-      });
+      // Recursive function to convert all previewImage fields to base64
+      function convertNodeImagesToBase64(node) {
+        if (!node) return null;
 
-      // // Заменяем nodes на обновлённые
+        const { previewImage, children, ...rest } = node;
+
+        // Convert previewImage to base64 if it exists
+        let convertedPreviewImage = null;
+        if (previewImage && Array.isArray(previewImage)) {
+          const uint8Array = new Uint8Array(previewImage);
+          convertedPreviewImage = uint8ToBase64(uint8Array);
+        }
+
+        // Recursively convert children
+        let convertedChildren = null;
+        if (children && Array.isArray(children)) {
+          convertedChildren = children.map(convertNodeImagesToBase64).filter(Boolean);
+        }
+
+        return {
+          ...rest,
+          previewImage: convertedPreviewImage,
+          children: convertedChildren
+        };
+      }
+
+      // Convert all nodes recursively
+      const updatedNodes = payload.nodes.map(convertNodeImagesToBase64).filter(Boolean);
+
+      // Replace nodes with updated ones
       payload.nodes = updatedNodes;
       payload.nodes.forEach(node => {
         console.log(node.previewImage)
