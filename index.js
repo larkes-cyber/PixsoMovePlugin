@@ -302,23 +302,34 @@ pixso.showUI(`
         const payload = msg.payload;
         setStatus('Отправляю данные на сервер', 'loading');
         
-        payload.nodes.forEach(node => {
-            if (node.previewImage) {
-                // Convert array to Uint8Array and then to base64
-                const uint8Array = new Uint8Array(node.previewImage);
-                let binary = '';
-                const chunkSize = 0x8000; // Process in 32KB chunks to avoid stack overflow
-                for (let i = 0; i < uint8Array.length; i += chunkSize) {
-                  const chunk = uint8Array.subarray(i, i + chunkSize);
-                  binary += String.fromCharCode.apply(null, chunk);
-                }
-                const base64 = btoa(binary);
-                node.previewImage = base64;
-                console.log(typeof node.previewImage);          // "object"
-            }
-        });
+        function uint8ToBase64(u8Arr) {
+        const chunkSize = 0x8000; // 32KB
+        let result = '';
+        for (let i = 0; i < u8Arr.length; i += chunkSize) {
+          const chunk = u8Arr.subarray(i, i + chunkSize);
+          result += String.fromCharCode.apply(null, chunk);
+        }
+        return btoa(result);
+      }
 
+      // Используем map для преобразования nodes
+      const updatedNodes = payload.nodes.map(node => {
+          const { previewImage, ...rest } = node; // вытаскиваем previewImage и всё остальное
+          if (node.previewImage) {
+            const uint8Array = new Uint8Array(node.previewImage);
+            const base64 = uint8ToBase64(uint8Array);
+            return { ...rest,  previewImage: base64}; // возвращаем только остальные свойства
+          }
+          return { ...rest,  previewImage: null}; // возвращаем только остальные свойства
+      });
+
+      // // Заменяем nodes на обновлённые
+      payload.nodes = updatedNodes;
+      payload.nodes.forEach(node => {
+        console.log(node.previewImage)
+      })
         try {
+                console.log("###################################")
           const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
