@@ -170,13 +170,45 @@ pixso.showUI(`
       padding: 16px;
       background: #1a202c;
       border-radius: 8px;
-      max-height: 300px;
+      max-height: 400px;
       overflow-y: auto;
+      position: relative;
     }
 
-    .json-container .status-label {
+    .json-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .json-header .status-label {
       color: #a0aec0;
-      margin-bottom: 8px;
+      margin-bottom: 0;
+    }
+
+    .copy-btn {
+      padding: 6px 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      background: #5568d3;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.95);
+    }
+
+    .copy-btn.copied {
+      background: #48bb78;
     }
 
     #jsonOutput {
@@ -206,6 +238,7 @@ pixso.showUI(`
     .json-container::-webkit-scrollbar-thumb:hover {
       background: #718096;
     }
+
   </style>
 </head>
 <body>
@@ -222,12 +255,15 @@ pixso.showUI(`
 
     <label class="toggle-container">
       <input type="checkbox" id="showJson">
-      <span class="toggle-label">Показать скриншот</span>
+      <span class="toggle-label">Show json</span>
     </label>
 
     <div class="json-container" id="jsonContainer" style="display: none;">
-      <div class="status-label">Скриншот первого фрейма</div>
-      <img id="frameImage" style="width: 100%; border-radius: 4px;" />
+      <div class="json-header">
+        <div class="status-label">JSON Data</div>
+        <button class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+      <pre id="jsonOutput"></pre>
     </div>
   </div>
 
@@ -237,23 +273,74 @@ pixso.showUI(`
     const sendBtn = document.getElementById('send');
     const showJsonCheckbox = document.getElementById('showJson');
     const jsonContainer = document.getElementById('jsonContainer');
-    const frameImage = document.getElementById('frameImage');
+    const jsonOutput = document.getElementById('jsonOutput');
+    const copyBtn = document.getElementById('copyBtn');
+
+    let currentJsonData = null;
 
     function setStatus(text, type = 'default') {
       statusDiv.textContent = text;
       statusContainer.className = 'status-container ' + type;
     }
 
-    // Toggle image container visibility and load screenshot
+    // Toggle JSON viewer visibility
     showJsonCheckbox.addEventListener('change', function() {
       if (this.checked) {
         jsonContainer.style.display = 'block';
-        frameImage.alt = 'Загрузка скриншота...';
-        parent.postMessage({ pluginMessage: { type: 'preview-data' } }, '*');
+        if (currentJsonData) {
+          jsonOutput.textContent = JSON.stringify(currentJsonData, null, 2);
+        }
       } else {
         jsonContainer.style.display = 'none';
       }
     });
+
+    // Copy JSON to clipboard
+    copyBtn.addEventListener('click', function() {
+      if (!currentJsonData) return;
+
+      try {
+        const jsonString = JSON.stringify(currentJsonData, null, 2);
+
+        // Create a temporary textarea element
+        const textarea = document.createElement('textarea');
+        textarea.value = jsonString;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+
+        // Select and copy the text
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        const successful = document.execCommand('copy');
+
+        // Remove the textarea
+        document.body.removeChild(textarea);
+
+        if (successful) {
+          copyBtn.textContent = 'Copied!';
+          copyBtn.classList.add('copied');
+
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy';
+            copyBtn.classList.remove('copied');
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        copyBtn.textContent = 'Failed';
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+        }, 2000);
+      }
+    });
+
+    // Preload data when plugin opens
+    function preloadData() {
+      setStatus('Загружаю данные...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'preload-data' } }, '*');
+    }
 
     sendBtn.onclick = async function() {
       sendBtn.disabled = true;
@@ -266,6 +353,9 @@ pixso.showUI(`
         sendBtn.disabled = false;
       }
     };
+
+    // Initialize plugin by preloading data
+    preloadData();
     function bytesToBase64(bytes) {
       // bytes: Uint8Array
       let binary = '';
@@ -281,25 +371,29 @@ pixso.showUI(`
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
-      if (msg.type === 'preview-data') {
-        // Display the frame screenshot
-        if (msg.imageBytes) {
-          // Convert array to Uint8Array and then to base64
-          const uint8Array = new Uint8Array(msg.imageBytes);
-          let binary = '';
-          const chunkSize = 0x8000; // Process in 32KB chunks to avoid stack overflow
-          for (let i = 0; i < uint8Array.length; i += chunkSize) {
-            const chunk = uint8Array.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, chunk);
-          }
-          const base64 = btoa(binary);
-          frameImage.src = 'data:image/png;base64,' + base64;
-          frameImage.alt = 'Скриншот фрейма';
-        } else if (msg.error) {
-          frameImage.alt = 'Ошибка: ' + msg.error;
+      if (msg.type === 'preload-data') {
+        const payload = msg.payload;
+
+        // Store payload for JSON viewer
+        currentJsonData = payload;
+
+        // Update JSON viewer if it's visible
+        if (showJsonCheckbox.checked) {
+          jsonOutput.textContent = JSON.stringify(payload, null, 2);
         }
+
+        setStatus('Готов к отправке', 'default');
       } else if (msg.type === 'collected-data') {
         const payload = msg.payload;
+
+        // Store payload for JSON viewer
+        currentJsonData = payload;
+
+        // Update JSON viewer if it's visible
+        if (showJsonCheckbox.checked) {
+          jsonOutput.textContent = JSON.stringify(payload, null, 2);
+        }
+
         setStatus('Отправляю данные на сервер', 'loading');
         
         function uint8ToBase64(u8Arr) {
@@ -377,51 +471,25 @@ pixso.showUI(`
 // Main thread (контроллер плагина)
 // ---------------------------------------
 pixso.ui.onmessage = async (msg) => {
-  if (msg.type !== 'collect-data' && msg.type !== 'preview-data') return;
+  if (msg.type !== 'collect-data' && msg.type !== 'preload-data') return;
 
   try {
-    if (msg.type === 'preview-data') {
-      // Export first frame as image
-      const page = pixso.currentPage;
-      const firstFrame = page?.children?.find(node => node.type === 'FRAME');
+    // Collect data for sending to server
+    const projectName = pixso.root?.name ?? null;
+    const page = pixso.currentPage;
 
-      if (!firstFrame) {
-        pixso.ui.postMessage({
-          type: 'preview-data',
-          error: 'Фрейм не найден на странице'
-        });
-        return;
-      }
+    const nodes = await Promise.all((page?.children ?? []).map(serializeNodeWithImage));
+    const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
 
-      // Export frame as PNG
-      const imageBytes = await firstFrame.exportAsync({
-        format: 'PNG',
-        constraint: { type: 'SCALE', value: 1 }
-      });
-
-      // Send raw bytes to UI for conversion
-      pixso.ui.postMessage({
-        type: 'preview-data',
-        imageBytes: Array.from(imageBytes)
-      });
-    } else {
-      // Collect data for sending to server
-      const projectName = pixso.root?.name ?? null;
-      const page = pixso.currentPage;
-
-      const nodes = await Promise.all((page?.children ?? []).map(serializeNodeWithImage));
-      const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
-
-      const payload = {
-        projectName,
-        pageName: page?.name ?? null,
-        pageId: page?.id ?? null,
-        timestamp: new Date().toISOString(),
-        nodes: nodes.filter(Boolean),
-        visualGraph: visualGraph.filter(Boolean)
-      };
-      pixso.ui.postMessage({ type: 'collected-data', payload });
-    }
+    const payload = {
+      projectName,
+      pageName: page?.name ?? null,
+      pageId: page?.id ?? null,
+      timestamp: new Date().toISOString(),
+      nodes: nodes.filter(Boolean),
+      visualGraph: visualGraph.filter(Boolean)
+    };
+    pixso.ui.postMessage({ type: msg.type === 'preload-data' ? 'preload-data' : 'collected-data', payload });
   } catch (err) {
     pixso.ui.postMessage({ type: 'error', message: err.message });
   }
