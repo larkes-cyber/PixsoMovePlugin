@@ -1,7 +1,8 @@
 // ---------------------------------------
 // UI (iframe)
 // ---------------------------------------
-pixso.showUI(`
+pixso.showUI(
+  `
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -24,6 +25,10 @@ pixso.showUI(`
       justify-content: center;
       padding: 20px;
       overflow: hidden;
+    }
+
+    .gap {
+      margin-top: 8px;
     }
 
     .container {
@@ -50,7 +55,7 @@ pixso.showUI(`
       margin-bottom: 32px;
     }
 
-    #send {
+    .action-button {
       width: 100%;
       padding: 14px 24px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -64,16 +69,16 @@ pixso.showUI(`
       box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     }
 
-    #send:hover {
+    .action-button:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
     }
 
-    #send:active {
+    .action-button:active {
       transform: translateY(0);
     }
 
-    #send:disabled {
+    .action-button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
       transform: none;
@@ -246,7 +251,8 @@ pixso.showUI(`
     <h1>Pixso Data Exporter</h1>
     <p class="subtitle">Экспорт структуры страницы на сервер</p>
 
-    <button id="send">Отправить данные</button>
+    <button id="exportSelected" class="action-button">Экспортировать выбранный элемент</button>
+    <button id="exportAll" class="action-button gap" disabled>Экспортировать весь документ</button>
 
     <div class="status-container" id="statusContainer">
       <div class="status-label">Статус</div>
@@ -270,7 +276,8 @@ pixso.showUI(`
   <script>
     const statusDiv = document.getElementById('status');
     const statusContainer = document.getElementById('statusContainer');
-    const sendBtn = document.getElementById('send');
+    const exportSelectedBtn = document.getElementById('exportSelected');
+    const exportAllBtn = document.getElementById('exportAll');
     const showJsonCheckbox = document.getElementById('showJson');
     const jsonContainer = document.getElementById('jsonContainer');
     const jsonOutput = document.getElementById('jsonOutput');
@@ -342,20 +349,17 @@ pixso.showUI(`
       parent.postMessage({ pluginMessage: { type: 'preload-data' } }, '*');
     }
 
-    sendBtn.onclick = async function() {
-      sendBtn.disabled = true;
-      setStatus('Запрашиваю данные у плагина', 'loading');
-
-      try {
-        parent.postMessage({ pluginMessage: { type: 'collect-data' } }, '*');
-      } catch (err) {
-        setStatus('❌ Ошибка: ' + err.message, 'error');
-        sendBtn.disabled = false;
-      }
+    exportAllBtn.onclick = () => {
+      exportAllBtn.disabled = true;
+      setStatus('Собираю весь документ...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'collect-all' } }, '*');
     };
 
-    // Initialize plugin by preloading data
-    preloadData();
+    exportSelectedBtn.onclick = () => {
+      setStatus('Собираю выбранный элемент...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'collect-selected' } }, '*');
+    };
+
     function bytesToBase64(bytes) {
       // bytes: Uint8Array
       let binary = '';
@@ -370,6 +374,11 @@ pixso.showUI(`
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
+
+      if (msg.type === 'selection-state') {
+        exportAllBtn.disabled = !msg.hasSelection;
+        return;
+      }
 
       if (msg.type === 'preload-data') {
         const payload = msg.payload;
@@ -456,30 +465,42 @@ pixso.showUI(`
           setStatus('❌ Ошибка отправки: ' + err.message, 'error');
         }
 
-        sendBtn.disabled = false;
+        exportAllBtn.disabled = false;
       } else if (msg.type === 'error') {
         setStatus('❌ Ошибка сбора данных: ' + msg.message, 'error');
-        sendBtn.disabled = false;
+        exportAllBtn.disabled = false;
       }
     };
   </script>
 </body>
 </html>
-`, { width: 600, height: 800 });
+`,
+  { width: 600, height: 800 }
+);
 
 // ---------------------------------------
 // Main thread (контроллер плагина)
 // ---------------------------------------
-pixso.ui.onmessage = async (msg) => {
-  if (msg.type !== 'collect-data' && msg.type !== 'preload-data') return;
+pixso.ui.onmessage = async msg => {
+  if (!['collect-all', 'collect-selected'].includes(msg.type)) return;
 
   try {
     // Collect data for sending to server
     const projectName = pixso.root?.name ?? null;
     const page = pixso.currentPage;
 
-    const nodes = await Promise.all((page?.children ?? []).map(serializeNodeWithImage));
-    const visualGraph = (page?.children ?? []).map(n => extractVisualGraph(n, 0));
+    let sourceNodes = [];
+
+    if (msg.type === 'collect-all') {
+      sourceNodes = page?.children ?? [];
+    }
+
+    if (msg.type === 'collect-selected') {
+      sourceNodes = pixso.currentPage.selection ?? [];
+    }
+
+    const nodes = await Promise.all(sourceNodes.map(serializeNodeWithImage));
+    const visualGraph = sourceNodes.map(n => extractVisualGraph(n, 0));
 
     const payload = {
       projectName,
@@ -489,17 +510,33 @@ pixso.ui.onmessage = async (msg) => {
       nodes: nodes.filter(Boolean),
       visualGraph: visualGraph.filter(Boolean)
     };
-    pixso.ui.postMessage({ type: msg.type === 'preload-data' ? 'preload-data' : 'collected-data', payload });
+
+    pixso.ui.postMessage({ type: 'collected-data', payload });
   } catch (err) {
     pixso.ui.postMessage({ type: 'error', message: err.message });
   }
 };
 
+function notifySelectionState() {
+  const hasSelection = pixso.currentPage.selection.length > 0;
+  pixso.ui.postMessage({
+    type: 'selection-state',
+    hasSelection
+  });
+}
+
+// Подписываемся на событие изменения выделения
+pixso.on('selectionchange', () => {
+  notifySelectionState();
+});
+
+notifySelectionState();
+
 /**
  * Универсальные хелперы
  */
 const safeNumber = v => (typeof v === 'number' ? v : null);
-const safeArray = (a, fn) => Array.isArray(a) ? a.map(fn).filter(Boolean) : [];
+const safeArray = (a, fn) => (Array.isArray(a) ? a.map(fn).filter(Boolean) : []);
 const safeString = v => (typeof v === 'string' ? v : null);
 
 function uint8ToBase64(uint8) {
@@ -530,7 +567,7 @@ async function serializeNodeWithImage(node) {
 
   if (node.type === 'FRAME') {
     try {
-      let img = await exportFrameBytes(node)
+      let img = await exportFrameBytes(node);
       base.previewImage = img;
     } catch (e) {
       base.previewImage = null;
@@ -538,9 +575,7 @@ async function serializeNodeWithImage(node) {
   }
 
   if (node.children?.length) {
-    base.children = await Promise.all(
-      node.children.map(serializeNodeWithImage)
-    ).then(a => a.filter(Boolean));
+    base.children = await Promise.all(node.children.map(serializeNodeWithImage)).then(a => a.filter(Boolean));
   }
 
   return base;
@@ -549,7 +584,6 @@ async function serializeNodeWithImage(node) {
 /**
  * Сериализация ноды строго под DTO
  */
-
 
 async function exportFrameBytes(frame) {
   return Array.from(
@@ -588,36 +622,44 @@ function serializeNode(node) {
     remote: typeof node.remote === 'boolean' ? node.remote : null
   };
 
-  const padding = node.padding ? {
-    top: safeNumber(node.padding.top),
-    right: safeNumber(node.padding.right),
-    bottom: safeNumber(node.padding.bottom),
-    left: safeNumber(node.padding.left)
-  } : null;
+  const padding = node.padding
+    ? {
+        top: safeNumber(node.padding.top),
+        right: safeNumber(node.padding.right),
+        bottom: safeNumber(node.padding.bottom),
+        left: safeNumber(node.padding.left)
+      }
+    : null;
 
-  const constraints = node.constraints ? {
-    horizontal: safeString(node.constraints.horizontal),
-    vertical: safeString(node.constraints.vertical)
-  } : null;
+  const constraints = node.constraints
+    ? {
+        horizontal: safeString(node.constraints.horizontal),
+        vertical: safeString(node.constraints.vertical)
+      }
+    : null;
 
-  const absoluteBoundingBox = node.absoluteBoundingBox ? {
-    x: safeNumber(node.absoluteBoundingBox.x),
-    y: safeNumber(node.absoluteBoundingBox.y),
-    width: safeNumber(node.absoluteBoundingBox.width),
-    height: safeNumber(node.absoluteBoundingBox.height)
-  } : null;
+  const absoluteBoundingBox = node.absoluteBoundingBox
+    ? {
+        x: safeNumber(node.absoluteBoundingBox.x),
+        y: safeNumber(node.absoluteBoundingBox.y),
+        width: safeNumber(node.absoluteBoundingBox.width),
+        height: safeNumber(node.absoluteBoundingBox.height)
+      }
+    : null;
 
   const fills = safeArray(node.fills, p => ({
     type: safeString(p.type),
     visible: typeof p.visible === 'boolean' ? p.visible : null,
     blendMode: safeString(p.blendMode),
     opacity: safeNumber(p.opacity),
-    color: p.color ? {
-      r: safeNumber(p.color.r),
-      g: safeNumber(p.color.g),
-      b: safeNumber(p.color.b),
-      a: safeNumber(p.color.a)
-    } : null
+    color: p.color
+      ? {
+          r: safeNumber(p.color.r),
+          g: safeNumber(p.color.g),
+          b: safeNumber(p.color.b),
+          a: safeNumber(p.color.a)
+        }
+      : null
   }));
 
   const strokes = safeArray(node.strokes, s => ({
@@ -625,12 +667,14 @@ function serializeNode(node) {
     visible: typeof s.visible === 'boolean' ? s.visible : null,
     blendMode: safeString(s.blendMode),
     opacity: safeNumber(s.opacity),
-    color: s.color ? {
-      r: safeNumber(s.color.r),
-      g: safeNumber(s.color.g),
-      b: safeNumber(s.color.b),
-      a: safeNumber(s.color.a)
-    } : null,
+    color: s.color
+      ? {
+          r: safeNumber(s.color.r),
+          g: safeNumber(s.color.g),
+          b: safeNumber(s.color.b),
+          a: safeNumber(s.color.a)
+        }
+      : null,
     strokeWeight: safeNumber(s.strokeWeight),
     strokeAlign: safeString(s.strokeAlign),
     strokeCap: safeString(s.strokeCap),
@@ -641,30 +685,36 @@ function serializeNode(node) {
     type: safeString(e.type),
     visible: typeof e.visible === 'boolean' ? e.visible : null,
     radius: safeNumber(e.radius),
-    color: e.color ? {
-      r: safeNumber(e.color.r),
-      g: safeNumber(e.color.g),
-      b: safeNumber(e.color.b),
-      a: safeNumber(e.color.a)
-    } : null
+    color: e.color
+      ? {
+          r: safeNumber(e.color.r),
+          g: safeNumber(e.color.g),
+          b: safeNumber(e.color.b),
+          a: safeNumber(e.color.a)
+        }
+      : null
   }));
 
-  const text = node.characters ? {
-    characters: safeString(node.characters),
-    style: node.style ? {
-      fontFamily: safeString(node.style.fontFamily),
-      fontSize: safeNumber(node.style.fontSize),
-      fontWeight: safeNumber(node.style.fontWeight),
-      fontStyle: safeString(node.style.fontStyle),
-      lineHeight: safeNumber(node.style.lineHeight),
-      letterSpacing: safeNumber(node.style.letterSpacing),
-      textAlignHorizontal: safeString(node.style.textAlignHorizontal),
-      textAlignVertical: safeString(node.style.textAlignVertical),
-      paragraphSpacing: safeNumber(node.style.paragraphSpacing),
-      textCase: safeString(node.style.textCase),
-      textDecoration: safeString(node.style.textDecoration)
-    } : null
-  } : null;
+  const text = node.characters
+    ? {
+        characters: safeString(node.characters),
+        style: node.style
+          ? {
+              fontFamily: safeString(node.style.fontFamily),
+              fontSize: safeNumber(node.style.fontSize),
+              fontWeight: safeNumber(node.style.fontWeight),
+              fontStyle: safeString(node.style.fontStyle),
+              lineHeight: safeNumber(node.style.lineHeight),
+              letterSpacing: safeNumber(node.style.letterSpacing),
+              textAlignHorizontal: safeString(node.style.textAlignHorizontal),
+              textAlignVertical: safeString(node.style.textAlignVertical),
+              paragraphSpacing: safeNumber(node.style.paragraphSpacing),
+              textCase: safeString(node.style.textCase),
+              textDecoration: safeString(node.style.textDecoration)
+            }
+          : null
+      }
+    : null;
 
   const exportSettings = safeArray(node.exportSettings, e => {
     if (typeof e === 'string') return e;
@@ -681,12 +731,14 @@ function serializeNode(node) {
     componentProperties.variantProperties = node.variantProperties ?? null;
   }
   if (node.type === 'INSTANCE') {
-    componentProperties.mainComponent = node.mainComponent ? {
-      id: safeString(node.mainComponent.id),
-      name: safeString(node.mainComponent.name),
-      key: safeString(node.mainComponent.key),
-      description: safeString(node.mainComponent.description)
-    } : null;
+    componentProperties.mainComponent = node.mainComponent
+      ? {
+          id: safeString(node.mainComponent.id),
+          name: safeString(node.mainComponent.name),
+          key: safeString(node.mainComponent.key),
+          description: safeString(node.mainComponent.description)
+        }
+      : null;
     componentProperties.componentProperties = node.componentProperties ?? null;
     componentProperties.variantProperties = node.variantProperties ?? null;
   }
@@ -765,7 +817,7 @@ function serializeNode(node) {
 function extractVisualGraph(node, depth = 0) {
   if (!node) return null;
 
-  const isContainer = ['FRAME','GROUP','COMPONENT','INSTANCE'].includes(node.type);
+  const isContainer = ['FRAME', 'GROUP', 'COMPONENT', 'INSTANCE'].includes(node.type);
   if (!isContainer) return null;
 
   const children = safeArray(node.children, n => extractVisualGraph(n, depth + 1)).filter(Boolean);
