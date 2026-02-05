@@ -283,6 +283,27 @@ pixso.showUI(
     const jsonOutput = document.getElementById('jsonOutput');
     const copyBtn = document.getElementById('copyBtn');
 
+    // Управление состоянием UI (пока что только для отключения кнопок)
+    const uiState = {
+      loading: false,
+      hasSelection: false,
+    };
+
+    function render() {
+      exportSelectedBtn.disabled = !uiState.hasSelection || uiState.loading;
+      exportAllBtn.disabled = uiState.loading;
+    }
+
+    function setLoading(value) {
+      uiState.loading = value;
+      render();
+    }
+
+    function setHasSelection(value) {
+      uiState.hasSelection = value;
+      render();
+    }
+
     let currentJsonData = null;
 
     function setStatus(text, type = 'default') {
@@ -350,12 +371,13 @@ pixso.showUI(
     }
 
     exportAllBtn.onclick = () => {
-      exportAllBtn.disabled = true;
+      setLoading(true);
       setStatus('Собираю весь документ...', 'loading');
       parent.postMessage({ pluginMessage: { type: 'collect-all' } }, '*');
     };
 
     exportSelectedBtn.onclick = () => {
+      setLoading(true);
       setStatus('Собираю выбранный элемент...', 'loading');
       parent.postMessage({ pluginMessage: { type: 'collect-selected' } }, '*');
     };
@@ -376,7 +398,7 @@ pixso.showUI(
       if (!msg) return;
 
       if (msg.type === 'selection-state') {
-        exportAllBtn.disabled = !msg.hasSelection;
+        setHasSelection(msg.hasSelection);
         return;
       }
 
@@ -464,11 +486,10 @@ pixso.showUI(
         } catch (err) {
           setStatus('❌ Ошибка отправки: ' + err.message, 'error');
         }
-
-        exportAllBtn.disabled = false;
+        setLoading(false);
       } else if (msg.type === 'error') {
         setStatus('❌ Ошибка сбора данных: ' + msg.message, 'error');
-        exportAllBtn.disabled = false;
+        setLoading(false);
       }
     };
   </script>
