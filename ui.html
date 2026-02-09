@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,6 +21,10 @@
       justify-content: center;
       padding: 20px;
       overflow: hidden;
+    }
+
+    .gap {
+      margin-top: 8px;
     }
 
     .container {
@@ -46,7 +51,7 @@
       margin-bottom: 32px;
     }
 
-    #send {
+    .action-button {
       width: 100%;
       padding: 14px 24px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -60,16 +65,16 @@
       box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     }
 
-    #send:hover {
+    .action-button:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
     }
 
-    #send:active {
+    .action-button:active {
       transform: translateY(0);
     }
 
-    #send:disabled {
+    .action-button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
       transform: none;
@@ -130,8 +135,15 @@
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
     }
 
     .loading .status-label::after {
@@ -166,13 +178,45 @@
       padding: 16px;
       background: #1a202c;
       border-radius: 8px;
-      max-height: 300px;
+      max-height: 400px;
       overflow-y: auto;
+      position: relative;
     }
 
-    .json-container .status-label {
+    .json-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .json-header .status-label {
       color: #a0aec0;
-      margin-bottom: 8px;
+      margin-bottom: 0;
+    }
+
+    .copy-btn {
+      padding: 6px 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      background: #5568d3;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.95);
+    }
+
+    .copy-btn.copied {
+      background: #48bb78;
     }
 
     #jsonOutput {
@@ -204,12 +248,14 @@
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>Pixso Data Exporter</h1>
     <p class="subtitle">Экспорт структуры страницы на сервер</p>
 
-    <button id="send">Отправить данные</button>
+    <button id="exportSelected" class="action-button">Экспортировать выбранный элемент</button>
+    <button id="exportAll" class="action-button gap" disabled>Экспортировать весь документ</button>
 
     <div class="status-container" id="statusContainer">
       <div class="status-label">Статус</div>
@@ -218,77 +264,218 @@
 
     <label class="toggle-container">
       <input type="checkbox" id="showJson">
-      <span class="toggle-label">Показать скриншот</span>
+      <span class="toggle-label">Show json</span>
     </label>
 
     <div class="json-container" id="jsonContainer" style="display: none;">
-      <div class="status-label">Скриншот первого фрейма</div>
-      <img id="frameImage" style="width: 100%; border-radius: 4px;" />
+      <div class="json-header">
+        <div class="status-label">JSON Data</div>
+        <button class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+      <pre id="jsonOutput"></pre>
     </div>
   </div>
 
   <script>
     const statusDiv = document.getElementById('status');
     const statusContainer = document.getElementById('statusContainer');
-    const sendBtn = document.getElementById('send');
+    const exportSelectedBtn = document.getElementById('exportSelected');
+    const exportAllBtn = document.getElementById('exportAll');
     const showJsonCheckbox = document.getElementById('showJson');
     const jsonContainer = document.getElementById('jsonContainer');
-    const frameImage = document.getElementById('frameImage');
+    const jsonOutput = document.getElementById('jsonOutput');
+    const copyBtn = document.getElementById('copyBtn');
+
+    // Управление состоянием UI (пока что только для отключения кнопок)
+    const uiState = {
+      loading: false,
+      hasSelection: false,
+    };
+
+    function render() {
+      exportSelectedBtn.disabled = !uiState.hasSelection || uiState.loading;
+      exportAllBtn.disabled = uiState.loading;
+    }
+
+    function setLoading(value) {
+      uiState.loading = value;
+      render();
+    }
+
+    function setHasSelection(value) {
+      uiState.hasSelection = value;
+      render();
+    }
+
+    let currentJsonData = null;
 
     function setStatus(text, type = 'default') {
       statusDiv.textContent = text;
       statusContainer.className = 'status-container ' + type;
     }
 
-    // Toggle image container visibility and load screenshot
-    showJsonCheckbox.addEventListener('change', function() {
+    // Toggle JSON viewer visibility
+    showJsonCheckbox.addEventListener('change', function () {
       if (this.checked) {
         jsonContainer.style.display = 'block';
-        frameImage.alt = 'Загрузка скриншота...';
-        parent.postMessage({ pluginMessage: { type: 'preview-data' } }, '*');
+        if (currentJsonData) {
+          jsonOutput.textContent = JSON.stringify(currentJsonData, null, 2);
+        }
       } else {
         jsonContainer.style.display = 'none';
       }
     });
 
-    sendBtn.onclick = async function() {
-      sendBtn.disabled = true;
-      setStatus('Запрашиваю данные у плагина', 'loading');
+    // Copy JSON to clipboard
+    copyBtn.addEventListener('click', function () {
+      if (!currentJsonData) return;
 
       try {
-        parent.postMessage({ pluginMessage: { type: 'collect-data' } }, '*');
+        const jsonString = JSON.stringify(currentJsonData, null, 2);
+
+        // Create a temporary textarea element
+        const textarea = document.createElement('textarea');
+        textarea.value = jsonString;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+
+        // Select and copy the text
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        const successful = document.execCommand('copy');
+
+        // Remove the textarea
+        document.body.removeChild(textarea);
+
+        if (successful) {
+          copyBtn.textContent = 'Copied!';
+          copyBtn.classList.add('copied');
+
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy';
+            copyBtn.classList.remove('copied');
+          }, 2000);
+        }
       } catch (err) {
-        setStatus('❌ Ошибка: ' + err.message, 'error');
-        sendBtn.disabled = false;
+        console.error('Failed to copy:', err);
+        copyBtn.textContent = 'Failed';
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+        }, 2000);
       }
+    });
+
+    // Preload data when plugin opens
+    function preloadData() {
+      setStatus('Загружаю данные...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'preload-data' } }, '*');
+    }
+
+    exportAllBtn.onclick = () => {
+      setLoading(true);
+      setStatus('Собираю весь документ...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'collect-all' } }, '*');
     };
+
+    exportSelectedBtn.onclick = () => {
+      setLoading(true);
+      setStatus('Собираю выбранный элемент...', 'loading');
+      parent.postMessage({ pluginMessage: { type: 'collect-selected' } }, '*');
+    };
+
+    function bytesToBase64(bytes) {
+      // bytes: Uint8Array
+      let binary = '';
+      const chunkSize = 0x8000; // предотвращаем переполнение стека
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode(...chunk);
+      }
+      return btoa(binary);
+    }
 
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
-      if (msg.type === 'preview-data') {
-        // Display the frame screenshot
-        if (msg.imageBytes) {
-          // Convert array to Uint8Array and then to base64
-          const uint8Array = new Uint8Array(msg.imageBytes);
-          let binary = '';
-          const chunkSize = 0x8000; // Process in 32KB chunks to avoid stack overflow
-          for (let i = 0; i < uint8Array.length; i += chunkSize) {
-            const chunk = uint8Array.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, chunk);
-          }
-          const base64 = btoa(binary);
-          frameImage.src = 'data:image/png;base64,' + base64;
-          frameImage.alt = 'Скриншот фрейма';
-        } else if (msg.error) {
-          frameImage.alt = 'Ошибка: ' + msg.error;
+      if (msg.type === 'selection-state') {
+        setHasSelection(msg.hasSelection);
+        return;
+      }
+
+      if (msg.type === 'preload-data') {
+        const payload = msg.payload;
+
+        // Store payload for JSON viewer
+        currentJsonData = payload;
+
+        // Update JSON viewer if it's visible
+        if (showJsonCheckbox.checked) {
+          jsonOutput.textContent = JSON.stringify(payload, null, 2);
         }
+
+        setStatus('Готов к отправке', 'default');
       } else if (msg.type === 'collected-data') {
         const payload = msg.payload;
+
+        // Store payload for JSON viewer
+        currentJsonData = payload;
+
+        // Update JSON viewer if it's visible
+        if (showJsonCheckbox.checked) {
+          jsonOutput.textContent = JSON.stringify(payload, null, 2);
+        }
+
         setStatus('Отправляю данные на сервер', 'loading');
 
+        function uint8ToBase64(u8Arr) {
+          const chunkSize = 0x8000; // 32KB
+          let result = '';
+          for (let i = 0; i < u8Arr.length; i += chunkSize) {
+            const chunk = u8Arr.subarray(i, i + chunkSize);
+            result += String.fromCharCode.apply(null, chunk);
+          }
+          return btoa(result);
+        }
+
+        // Recursive function to convert all previewImage fields to base64
+        function convertNodeImagesToBase64(node) {
+          if (!node) return null;
+
+          const { previewImage, children, ...rest } = node;
+
+          // Convert previewImage to base64 if it exists
+          let convertedPreviewImage = null;
+          if (previewImage && Array.isArray(previewImage)) {
+            const uint8Array = new Uint8Array(previewImage);
+            convertedPreviewImage = uint8ToBase64(uint8Array);
+          }
+
+          // Recursively convert children
+          let convertedChildren = null;
+          if (children && Array.isArray(children)) {
+            convertedChildren = children.map(convertNodeImagesToBase64).filter(Boolean);
+          }
+
+          return {
+            ...rest,
+            previewImage: convertedPreviewImage,
+            children: convertedChildren
+          };
+        }
+
+        // Convert all nodes recursively
+        const updatedNodes = payload.nodes.map(convertNodeImagesToBase64).filter(Boolean);
+
+        // Replace nodes with updated ones
+        payload.nodes = updatedNodes;
+        payload.nodes.forEach(node => {
+          console.log(node.previewImage)
+        })
         try {
+          console.log("###################################")
           const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -298,17 +485,17 @@
           if (!res.ok) throw new Error('Сервер вернул статус ' + res.status);
 
           const responseData = await res.text();
-          setStatus('✓ Данные успешно отправлены!\n\nОтвет сервера: ' + responseData, 'success');
+          setStatus('✓ Данные успешно отправлены!\\n\\nОтвет сервера: ' + responseData, 'success');
         } catch (err) {
           setStatus('❌ Ошибка отправки: ' + err.message, 'error');
         }
-
-        sendBtn.disabled = false;
+        setLoading(false);
       } else if (msg.type === 'error') {
         setStatus('❌ Ошибка сбора данных: ' + msg.message, 'error');
-        sendBtn.disabled = false;
+        setLoading(false);
       }
     };
   </script>
 </body>
+
 </html>
