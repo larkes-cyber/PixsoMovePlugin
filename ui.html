@@ -419,6 +419,42 @@
       return btoa(binary);
     }
 
+    function downloadCurrentJson() {
+      if (!currentJsonData) {
+        return;
+      }
+
+      try {
+        const jsonString = JSON.stringify(currentJsonData, null, 2);
+
+        // создаём Blob из JSON
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        // создаём временную ссылку для скачивания
+        const a = document.createElement('a');
+        a.href = url;
+
+        // имя файла с датой и временем
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:.]/g, '-');
+        a.download = `pixso-export-${timestamp}.json`;
+
+        document.body.appendChild(a);
+        a.click();
+
+        // чистим за собой
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        setStatus('JSON успешно скачан', 'success');
+      } catch (err) {
+        setStatus('Ошибка при скачивании: ' + err.message, 'error');
+      }
+    }
+
+    downloadLink.onclick = downloadCurrentJson;
+
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
