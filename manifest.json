@@ -2,6 +2,7 @@
   "name": "PixsoMove Plugin",
   "id": "demo-plugin",
   "main": "index.js",
+  "ui": "ui.html",
   "version": "1.0.0",
   "api": "1.0.0",
   "editorType": ["pixso", "dev"]
