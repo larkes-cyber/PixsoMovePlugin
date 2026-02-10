@@ -259,6 +259,11 @@
       color: unset;
       text-decoration: unset;
     }
+
+    .link.disabled {
+      color: #a0aec0;
+      pointer-events: none;
+    }
   </style>
 </head>
 
@@ -316,6 +321,15 @@
     function render() {
       exportSelectedBtn.disabled = !uiState.hasSelection || uiState.loading;
       exportAllBtn.disabled = uiState.loading;
+
+      if (uiState.loading) {
+        downloadLink.classList.add('disabled');
+        sendLink.classList.add('disabled');
+      } else {
+        downloadLink.classList.remove('disabled');
+        sendLink.classList.remove('disabled');
+      }
+
       uiState.jsonDataExists = !!currentJsonData;
       jsonActions.style.display = uiState.jsonDataExists ? 'flex' : 'none';
     }
