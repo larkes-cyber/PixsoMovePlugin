@@ -413,6 +413,16 @@
       return btoa(binary);
     }
 
+    function uint8ToBase64(u8Arr) {
+      const chunkSize = 0x8000; // 32KB
+      let result = '';
+      for (let i = 0; i < u8Arr.length; i += chunkSize) {
+        const chunk = u8Arr.subarray(i, i + chunkSize);
+        result += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(result);
+    }
+
     function downloadCurrentJson() {
       if (!currentJsonData) {
         return;
@@ -449,6 +459,71 @@
 
     downloadLink.onclick = downloadCurrentJson;
 
+    // Recursive function to convert all previewImage fields to base64
+    function convertNodeImagesToBase64(node) {
+      if (!node) return null;
+
+      const { previewImage, children, ...rest } = node;
+
+      // Convert previewImage to base64 if it exists
+      let convertedPreviewImage = null;
+      if (previewImage && Array.isArray(previewImage)) {
+        const uint8Array = new Uint8Array(previewImage);
+        convertedPreviewImage = uint8ToBase64(uint8Array);
+      }
+
+      // Recursively convert children
+      let convertedChildren = null;
+      if (children && Array.isArray(children)) {
+        convertedChildren = children.map(convertNodeImagesToBase64).filter(Boolean);
+      }
+
+      return {
+        ...rest,
+        previewImage: convertedPreviewImage,
+        children: convertedChildren
+      };
+    }
+
+    async function sendCurrentJson() {
+      if (!currentJsonData) {
+        setStatus('Нет данных для отправки', 'error');
+        return;
+      }
+
+      // Convert all nodes recursively
+      const updatedNodes = currentJsonData.nodes.map(convertNodeImagesToBase64).filter(Boolean);
+
+      // Replace nodes with updated ones
+      currentJsonData.nodes = updatedNodes;
+
+      setStatus('Отправляю данные на сервер', 'loading');
+      setLoading(true);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentJsonData),
+          signal: controller.signal
+        });
+
+        if (!res.ok) throw new Error('Сервер вернул статус ' + res.status);
+
+        const responseData = await res.text();
+        setStatus('✓ Данные успешно отправлены!\n\nОтвет сервера: ' + responseData, 'success');
+      } catch (err) {
+        setStatus('❌ Ошибка отправки: ' + err.message, 'error');
+      }
+      clearTimeout(timeoutId);
+      setLoading(false);
+    }
+
+    sendLink.onclick = sendCurrentJson;
+
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
@@ -461,79 +536,26 @@
       if (msg.type === 'collected-data') {
         const payload = msg.payload;
 
-        // Store payload for JSON viewer
+        // Сохраняем данные в локальную переменную
         currentJsonData = payload;
 
-        // Update JSON viewer if it's visible
+        // Если окно просмотра JSON раскрыто, обновляем его содержимое
         if (showJsonCheckbox.checked) {
           jsonOutput.textContent = JSON.stringify(payload, null, 2);
         }
 
-        setStatus('Отправляю данные на сервер', 'loading');
-
-        function uint8ToBase64(u8Arr) {
-          const chunkSize = 0x8000; // 32KB
-          let result = '';
-          for (let i = 0; i < u8Arr.length; i += chunkSize) {
-            const chunk = u8Arr.subarray(i, i + chunkSize);
-            result += String.fromCharCode.apply(null, chunk);
-          }
-          return btoa(result);
-        }
-
-        // Recursive function to convert all previewImage fields to base64
-        function convertNodeImagesToBase64(node) {
-          if (!node) return null;
-
-          const { previewImage, children, ...rest } = node;
-
-          // Convert previewImage to base64 if it exists
-          let convertedPreviewImage = null;
-          if (previewImage && Array.isArray(previewImage)) {
-            const uint8Array = new Uint8Array(previewImage);
-            convertedPreviewImage = uint8ToBase64(uint8Array);
-          }
-
-          // Recursively convert children
-          let convertedChildren = null;
-          if (children && Array.isArray(children)) {
-            convertedChildren = children.map(convertNodeImagesToBase64).filter(Boolean);
-          }
-
-          return {
-            ...rest,
-            previewImage: convertedPreviewImage,
-            children: convertedChildren
-          };
-        }
-
-        // Convert all nodes recursively
-        const updatedNodes = payload.nodes.map(convertNodeImagesToBase64).filter(Boolean);
-
-        // Replace nodes with updated ones
-        payload.nodes = updatedNodes;
-        payload.nodes.forEach(node => {
-          console.log(node.previewImage)
-        })
-        try {
-          console.log("###################################")
-          const res = await fetch('https://pxisomove-production-6aa6.up.railway.app/sendPixsoNodes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-
-          if (!res.ok) throw new Error('Сервер вернул статус ' + res.status);
-
-          const responseData = await res.text();
-          setStatus('✓ Данные успешно отправлены!\n\nОтвет сервера: ' + responseData, 'success');
-        } catch (err) {
-          setStatus('❌ Ошибка отправки: ' + err.message, 'error');
-        }
+        setStatus('Готов к отправке', 'default');
         setLoading(false);
-      } else if (msg.type === 'error') {
+
+        return;
+      }
+
+      if (msg.type === 'error') {
         setStatus('❌ Ошибка сбора данных: ' + msg.message, 'error');
         setLoading(false);
+
+        currentJsonData = null;
+        render();
       }
     };
   </script>
