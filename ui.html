@@ -154,7 +154,6 @@
     .toggle-container {
       display: flex;
       align-items: center;
-      margin-top: 20px;
       cursor: pointer;
       user-select: none;
     }
@@ -246,6 +245,20 @@
     .json-container::-webkit-scrollbar-thumb:hover {
       background: #718096;
     }
+
+    #json-actions {
+      margin-top: 20px;
+      display: none;
+      /* динамически меняется на flex */
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .link:visited {
+      color: unset;
+      text-decoration: unset;
+    }
   </style>
 </head>
 
@@ -259,13 +272,17 @@
 
     <div class="status-container" id="statusContainer">
       <div class="status-label">Статус</div>
-      <div id="status">Готов к отправке</div>
+      <div id="status">Ожидание действий</div>
     </div>
 
-    <label class="toggle-container">
-      <input type="checkbox" id="showJson">
-      <span class="toggle-label">Show json</span>
-    </label>
+    <div id="json-actions">
+      <label class="toggle-container">
+        <input type="checkbox" id="showJson">
+        <span class="toggle-label">Показать JSON</span>
+      </label>
+      <a href="#" target="_self" class="link" id="download-json">Скачать JSON</a>
+      <a href="#" target="_self" class="link" id="send-json">Отправить JSON на сервер</a>
+    </div>
 
     <div class="json-container" id="jsonContainer" style="display: none;">
       <div class="json-header">
@@ -282,19 +299,25 @@
     const exportSelectedBtn = document.getElementById('exportSelected');
     const exportAllBtn = document.getElementById('exportAll');
     const showJsonCheckbox = document.getElementById('showJson');
+    const jsonActions = document.getElementById('json-actions');
     const jsonContainer = document.getElementById('jsonContainer');
     const jsonOutput = document.getElementById('jsonOutput');
     const copyBtn = document.getElementById('copyBtn');
+    const downloadLink = document.getElementById('download-json');
+    const sendLink = document.getElementById('send-json');
 
     // Управление состоянием UI (пока что только для отключения кнопок)
     const uiState = {
       loading: false,
       hasSelection: false,
+      jsonDataExists: false,
     };
 
     function render() {
       exportSelectedBtn.disabled = !uiState.hasSelection || uiState.loading;
       exportAllBtn.disabled = uiState.loading;
+      uiState.jsonDataExists = !!currentJsonData;
+      jsonActions.style.display = uiState.jsonDataExists ? 'flex' : 'none';
     }
 
     function setLoading(value) {
@@ -417,6 +440,7 @@
         }
 
         setStatus('Готов к отправке', 'default');
+        render();
       } else if (msg.type === 'collected-data') {
         const payload = msg.payload;
 
@@ -485,7 +509,7 @@
           if (!res.ok) throw new Error('Сервер вернул статус ' + res.status);
 
           const responseData = await res.text();
-          setStatus('✓ Данные успешно отправлены!\\n\\nОтвет сервера: ' + responseData, 'success');
+          setStatus('✓ Данные успешно отправлены!\n\nОтвет сервера: ' + responseData, 'success');
         } catch (err) {
           setStatus('❌ Ошибка отправки: ' + err.message, 'error');
         }
