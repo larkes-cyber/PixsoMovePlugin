@@ -390,12 +390,6 @@
       }
     });
 
-    // Preload data when plugin opens
-    function preloadData() {
-      setStatus('Загружаю данные...', 'loading');
-      parent.postMessage({ pluginMessage: { type: 'preload-data' } }, '*');
-    }
-
     exportAllBtn.onclick = () => {
       setLoading(true);
       setStatus('Собираю весь документ...', 'loading');
@@ -464,20 +458,7 @@
         return;
       }
 
-      if (msg.type === 'preload-data') {
-        const payload = msg.payload;
-
-        // Store payload for JSON viewer
-        currentJsonData = payload;
-
-        // Update JSON viewer if it's visible
-        if (showJsonCheckbox.checked) {
-          jsonOutput.textContent = JSON.stringify(payload, null, 2);
-        }
-
-        setStatus('Готов к отправке', 'default');
-        render();
-      } else if (msg.type === 'collected-data') {
+      if (msg.type === 'collected-data') {
         const payload = msg.payload;
 
         // Store payload for JSON viewer
